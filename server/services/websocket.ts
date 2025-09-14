@@ -1,3 +1,4 @@
+
 import { WebSocketServer, WebSocket } from "ws";
 import { type Server } from "http";
 import { type Download, type BatchDownload } from "@shared/schema";
@@ -140,91 +141,6 @@ let wsService: WebSocketService | null = null;
 
 export function initializeWebSocket(server: Server): WebSocketService {
   wsService = new WebSocketService(server);
-  return wsService;
-}
-
-export function getWebSocketService(): WebSocketService | null {
-  return wsService;
-}
-import { Server } from "http";
-import WebSocket from "ws";
-import type { Download, BatchDownload } from "@shared/schema";
-
-export interface WebSocketService {
-  sendDownloadProgress: (download: Download) => void;
-  sendDownloadComplete: (download: Download) => void;
-  sendDownloadError: (download: Download) => void;
-  sendBatchProgress: (batch: BatchDownload) => void;
-  sendBatchComplete: (batch: BatchDownload) => void;
-}
-
-let wsService: WebSocketService | null = null;
-
-export function initializeWebSocket(server: Server): WebSocketService {
-  const wss = new WebSocket.Server({ server });
-  const clients = new Set<WebSocket>();
-
-  wss.on("connection", (ws) => {
-    console.log("WebSocket client connected");
-    clients.add(ws);
-
-    ws.on("close", () => {
-      console.log("WebSocket client disconnected");
-      clients.delete(ws);
-    });
-
-    ws.on("error", (error) => {
-      console.error("WebSocket error:", error);
-      clients.delete(ws);
-    });
-  });
-
-  const broadcast = (message: any) => {
-    const data = JSON.stringify(message);
-    clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-      }
-    });
-  };
-
-  wsService = {
-    sendDownloadProgress: (download: Download) => {
-      broadcast({
-        type: "download_progress",
-        payload: download,
-      });
-    },
-
-    sendDownloadComplete: (download: Download) => {
-      broadcast({
-        type: "download_complete",
-        payload: download,
-      });
-    },
-
-    sendDownloadError: (download: Download) => {
-      broadcast({
-        type: "download_error",
-        payload: download,
-      });
-    },
-
-    sendBatchProgress: (batch: BatchDownload) => {
-      broadcast({
-        type: "batch_progress",
-        payload: batch,
-      });
-    },
-
-    sendBatchComplete: (batch: BatchDownload) => {
-      broadcast({
-        type: "batch_complete",
-        payload: batch,
-      });
-    },
-  };
-
   return wsService;
 }
 
