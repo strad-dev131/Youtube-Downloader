@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useWebSocket } from "@/hooks/use-websocket";
+import { formatFileSize, youtubeApi } from "@/lib/api";
+import { Download } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 interface Download {
   id: string;
@@ -14,6 +18,7 @@ interface Download {
   type?: string;
   totalItems?: number;
   completedItems?: number;
+  error?: string;
 }
 
 interface ProgressTrackerProps {
@@ -32,7 +37,7 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
     if (lastMessage) {
       try {
         const message = JSON.parse(lastMessage);
-        
+
         if (message.type === "download_progress") {
           setDownloads(prev => prev.map(download => 
             download.id === message.payload.id 
@@ -76,14 +81,26 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "completed":
-        return "bg-secondary text-secondary-foreground";
-      case "failed":
-        return "bg-destructive text-destructive-foreground";
-      case "downloading":
-        return "bg-primary text-primary-foreground";
-      default:
-        return "bg-muted text-muted-foreground";
+      case "completed": return "bg-green-500";
+      case "failed": return "bg-red-500";
+      case "downloading": return "bg-blue-500";
+      default: return "bg-gray-500";
+    }
+  };
+
+  const handleDownloadFile = async (downloadId: string) => {
+    try {
+      await youtubeApi.downloadFile(downloadId);
+      toast({
+        title: "Download Started",
+        description: "File download has started to your device",
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: error instanceof Error ? error.message : "Failed to download file",
+        variant: "destructive",
+      });
     }
   };
 
@@ -105,36 +122,44 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
           </span>
         </div>
       </div>
-      
+
       <div className="space-y-4">
         {downloads.map((download) => (
           <Card key={download.id} className="bg-muted" data-testid={`progress-item-${download.id}`}>
             <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-foreground">
-                  {download.type === "batch" 
-                    ? `Batch Download (${download.totalItems} items)`
-                    : download.title || "Loading..."}
-                </span>
-                <Badge className={getStatusColor(download.status)}>
-                  {getStatusText(download)}
-                </Badge>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium">{download.title || "Loading..."}</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className={`text-white ${getStatusColor(download.status)}`}>
+                    {download.status}
+                  </Badge>
+                  {download.status === "completed" && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleDownloadFile(download.id)}
+                      className="h-6 px-2 text-xs"
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Download
+                    </Button>
+                  )}
+                </div>
               </div>
-              
+
               <Progress 
                 value={download.progress} 
                 className="w-full mb-2"
                 data-testid={`progress-bar-${download.id}`}
               />
-              
+
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>{download.format?.toUpperCase()}</span>
                 <span>{download.progress.toFixed(1)}%</span>
               </div>
-              
-              {download.url && download.type !== "batch" && (
-                <div className="text-xs text-muted-foreground truncate mt-1">
-                  {download.url}
+
+              {download.error && (
+                <div className="text-xs text-destructive mt-1">
+                  Error: {download.error}
                 </div>
               )}
             </CardContent>

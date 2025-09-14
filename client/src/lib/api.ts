@@ -150,6 +150,38 @@ export class YouTubeApi {
     return result.data;
   }
 
+  async downloadFile(id: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/download/${id}/file`);
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Download failed" }));
+      throw new Error(error.error || "Failed to download file");
+    }
+
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `download_${id}`;
+    
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    // Create blob and trigger download
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  }
+
   async sendTelegramWebhook(message: any): Promise<{ success: boolean }> {
     const response = await apiRequest("POST", `${this.baseUrl}/telegram/webhook`, message);
     const result: ApiResponse<{ success: boolean }> = await response.json();

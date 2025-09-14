@@ -205,6 +205,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Download file endpoint
+  app.get("/api/download/:id/file", async (req, res) => {
+    try {
+      const download = await storage.getDownload(req.params.id);
+      if (!download) {
+        return res.status(404).json({ success: false, error: "Download not found" });
+      }
+
+      if (!download.filePath || download.status !== "completed") {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Download not completed or file not available" 
+        });
+      }
+
+      // Check if file exists
+      try {
+        await require("fs").promises.access(download.filePath);
+      } catch {
+        return res.status(404).json({ 
+          success: false, 
+          error: "File not found on server" 
+        });
+      }
+
+      // Get file stats for proper headers
+      const stats = await require("fs").promises.stat(download.filePath);
+      const filename = require("path").basename(download.filePath);
+
+      // Set appropriate headers for download
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', stats.size);
+      res.setHeader('Content-Type', 'application/octet-stream');
+
+      // Stream the file to response
+      const fileStream = require("fs").createReadStream(download.filePath);
+      
+      fileStream.on('error', (error) => {
+        console.error('File stream error:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, error: "File streaming error" });
+        }
+      });
+
+      fileStream.on('end', async () => {
+        // Clean up file after download (optional - you can remove this if you want to keep files)
+        try {
+          await youtubeService.deleteFile(download.filePath);
+          console.log(`Cleaned up file: ${download.filePath}`);
+        } catch (error) {
+          console.error(`Failed to clean up file: ${error}`);
+        }
+      });
+
+      fileStream.pipe(res);
+
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        error: "Internal server error" 
+      });
+    }
+  });
+
   // Generate API key (for authenticated users)
   app.post("/api/auth/generate-key", authenticateApiKey, async (req, res) => {
     try {
