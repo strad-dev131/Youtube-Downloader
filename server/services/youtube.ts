@@ -58,8 +58,12 @@ export class YouTubeService {
         "--dump-json",
         "--no-warnings",
         "--no-check-certificates",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "--referer", "https://www.youtube.com/",
+        "--cookies-from-browser", "chrome",
+        "--extractor-retries", "3",
+        "--fragment-retries", "3",
+        "--retry-sleep", "linear=1::2",
         url
       ];
 
@@ -138,10 +142,15 @@ export class YouTubeService {
         "--no-warnings",
         "--newline",
         "--no-check-certificates",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "--referer", "https://www.youtube.com/",
+        "--cookies-from-browser", "chrome",
+        "--extractor-retries", "3",
+        "--fragment-retries", "3",
+        "--retry-sleep", "linear=1::2",
         "--sleep-interval", "1",
         "--max-sleep-interval", "5",
+        "--throttled-rate", "100K",
         url
       );
 

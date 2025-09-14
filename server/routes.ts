@@ -36,7 +36,7 @@ async function authenticateApiKey(req: any, res: any, next: any) {
 
   const apiKey = authHeader.substring(7);
   const user = await storage.getUserByApiKey(apiKey);
-  
+
   if (!user) {
     return res.status(401).json({ error: "Invalid API key" });
   }
@@ -47,7 +47,7 @@ async function authenticateApiKey(req: any, res: any, next: any) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
-  
+
   // Initialize WebSocket
   const wsService = initializeWebSocket(httpServer);
 
@@ -77,13 +77,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/download", downloadLimit, async (req, res) => {
     try {
       const downloadData = insertDownloadSchema.parse(req.body);
-      
+
       // Create download record
       const download = await storage.createDownload(downloadData);
-      
+
       // Start download process asynchronously
       processDownload(download.id).catch(console.error);
-      
+
       res.json({ 
         success: true, 
         data: { 
@@ -104,19 +104,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/batch-download", downloadLimit, async (req, res) => {
     try {
       const batchData = insertBatchDownloadSchema.parse(req.body);
-      
+
       if (batchData.urls.length > 20) {
         return res.status(400).json({
           success: false,
           error: "Maximum 20 URLs allowed per batch"
         });
       }
-      
+
       const batch = await storage.createBatchDownload(batchData);
-      
+
       // Start batch download process asynchronously
       processBatchDownload(batch.id).catch(console.error);
-      
+
       res.json({ 
         success: true, 
         data: { 
@@ -141,7 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!download) {
         return res.status(404).json({ success: false, error: "Download not found" });
       }
-      
+
       res.json({ success: true, data: download });
     } catch (error) {
       res.status(500).json({ 
@@ -158,7 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!batch) {
         return res.status(404).json({ success: false, error: "Batch download not found" });
       }
-      
+
       res.json({ success: true, data: batch });
     } catch (error) {
       res.status(500).json({ 
@@ -172,32 +172,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/telegram/webhook", async (req, res) => {
     try {
       const { message } = req.body;
-      
+
       if (message?.text?.startsWith("/download")) {
         const parts = message.text.split(" ");
         if (parts.length < 2) {
           return res.json({ success: true });
         }
-        
+
         const url = parts[1];
         const format = parts[2] || "mp3";
-        
+
         const download = await storage.createDownload({
           url,
           format,
           telegramChatId: message.chat.id.toString(),
         });
-        
+
         if (telegramService) {
           await telegramService.sendMessage(
             message.chat.id,
             `🎵 Download started for: ${url}\nFormat: ${format}\nDownload ID: ${download.id}`
           );
         }
-        
+
         processDownload(download.id).catch(console.error);
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       console.error("Telegram webhook error:", error);
@@ -210,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const apiKey = `ytdl_${randomUUID()}`;
       await storage.updateUserApiKey((req as any).user.id, apiKey);
-      
+
       res.json({ success: true, data: { apiKey } });
     } catch (error) {
       res.status(500).json({ 
@@ -237,30 +237,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         metadata: info 
       });
 
-      // Download the video with progress tracking
-      const filePath = await youtubeService.downloadVideo(
-        download.url,
-        download.format,
-        downloadId,
-        async (progress) => {
-          const updated = await storage.updateDownload(downloadId, { 
-            progress: progress.progress 
-          });
-          if (updated) {
-            wsService?.sendDownloadProgress(updated);
-            
-            // Send progress to Telegram if chat ID is provided
-            if (download.telegramChatId && telegramService && progress.progress % 20 === 0) {
-              await telegramService.sendProgress(
-                download.telegramChatId, 
-                downloadId, 
-                progress.progress,
-                info.title
-              );
+      // Start download in background with retry logic
+      let filePath: string;
+      let retryCount = 0;
+      const maxRetries = 2;
+
+      while (retryCount <= maxRetries) {
+        try {
+          filePath = await youtubeService.downloadVideo(
+            download.url, 
+            download.format, 
+            downloadId,
+            (progress) => {
+              storage.updateDownload(downloadId, { 
+                progress: progress.progress,
+                status: progress.status 
+              });
+              wsService?.sendDownloadProgress({...download, ...progress});
             }
+          );
+          break; // Success, exit retry loop
+        } catch (error: any) {
+          retryCount++;
+          console.log(`Download attempt ${retryCount} failed: ${error.message}`);
+
+          if (retryCount > maxRetries) {
+            throw error; // Re-throw after max retries
           }
+
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
         }
-      );
+      }
 
       // Get file size
       const fileSize = await youtubeService.getFileSize(filePath);
@@ -276,12 +284,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (completedDownload) {
         wsService?.sendDownloadComplete(completedDownload);
-        
+
         // Send file to Telegram if chat ID is provided
         if (download.telegramChatId && telegramService) {
           await telegramService.handleDownloadComplete(completedDownload);
         }
-        
+
         // Send webhook notification if URL is provided
         if (download.webhookUrl) {
           await sendWebhookNotification(download.webhookUrl, completedDownload);
@@ -290,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       console.error("Download error:", error);
-      
+
       const failedDownload = await storage.updateDownload(downloadId, {
         status: "failed",
         errorMessage: error instanceof Error ? error.message : "Unknown error",
@@ -298,7 +306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (failedDownload) {
         wsService?.sendDownloadError(failedDownload);
-        
+
         if (failedDownload?.telegramChatId && telegramService) {
           await telegramService.sendMessage(
             failedDownload.telegramChatId,
@@ -316,12 +324,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!batch) return;
 
       await storage.updateBatchDownload(batchId, { status: "downloading" });
-      
+
       let completedItems = 0;
-      
+
       for (let i = 0; i < batch.urls.length; i++) {
         const url = batch.urls[i];
-        
+
         try {
           const download = await storage.createDownload({
             url,
@@ -329,35 +337,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             telegramChatId: batch.telegramChatId,
             webhookUrl: batch.webhookUrl,
           });
-          
+
           await processDownload(download.id);
           completedItems++;
-          
+
           const progress = Math.round((completedItems / batch.totalItems) * 100);
           const updatedBatch = await storage.updateBatchDownload(batchId, {
             progress,
             completedItems,
           });
-          
+
           if (updatedBatch) {
             wsService?.sendBatchProgress(updatedBatch);
           }
-          
+
         } catch (error) {
           console.error(`Failed to process URL ${url}:`, error);
         }
       }
-      
+
       const completedBatch = await storage.updateBatchDownload(batchId, {
         status: "completed",
         progress: 100,
         completedAt: new Date(),
       });
-      
+
       if (completedBatch) {
         wsService?.sendBatchComplete(completedBatch);
       }
-      
+
     } catch (error) {
       console.error("Batch download error:", error);
       await storage.updateBatchDownload(batchId, { status: "failed" });
