@@ -233,11 +233,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get file stats for proper headers
       const stats = await require("fs").promises.stat(download.filePath);
       const filename = require("path").basename(download.filePath);
+      const ext = require("path").extname(filename).toLowerCase();
+
+      // Determine proper content type based on format
+      let contentType = 'application/octet-stream';
+      if (ext === '.mp4') {
+        contentType = 'video/mp4';
+      } else if (ext === '.mp3') {
+        contentType = 'audio/mpeg';
+      } else if (ext === '.wav') {
+        contentType = 'audio/wav';
+      } else if (ext === '.webm') {
+        contentType = 'video/webm';
+      }
 
       // Set appropriate headers for download
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
       res.setHeader('Content-Length', stats.size);
-      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-cache');
 
       // Stream the file to response
       const fileStream = require("fs").createReadStream(download.filePath);

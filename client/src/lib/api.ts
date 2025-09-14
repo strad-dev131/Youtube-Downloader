@@ -163,9 +163,22 @@ export class YouTubeApi {
     let filename = `download_${id}`;
     
     if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      // Handle both encoded and non-encoded filenames
+      const filenameMatch = contentDisposition.match(/filename\*?="?([^"]+)"?/);
       if (filenameMatch) {
-        filename = filenameMatch[1];
+        filename = decodeURIComponent(filenameMatch[1]);
+      }
+    }
+
+    // Fallback: try to get content type to determine extension
+    if (!filename.includes('.')) {
+      const contentType = response.headers.get('Content-Type');
+      if (contentType?.includes('mp4')) {
+        filename += '.mp4';
+      } else if (contentType?.includes('mp3')) {
+        filename += '.mp3';
+      } else if (contentType?.includes('wav')) {
+        filename += '.wav';
       }
     }
 
@@ -178,8 +191,12 @@ export class YouTubeApi {
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    
+    // Clean up after a short delay to ensure download starts
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }, 100);
   }
 
   async sendTelegramWebhook(message: any): Promise<{ success: boolean }> {

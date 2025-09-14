@@ -29,51 +29,66 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
   const [downloads, setDownloads] = useState<Download[]>(initialDownloads);
   const { lastMessage, isConnected } = useWebSocket();
 
+  // Renamed wsMessage to lastMessage to match the hook's return value
+  const wsMessage = lastMessage ? JSON.parse(lastMessage) : null;
+
   useEffect(() => {
     setDownloads(initialDownloads);
   }, [initialDownloads]);
 
   useEffect(() => {
-    if (lastMessage) {
-      try {
-        const message = JSON.parse(lastMessage);
+    if (wsMessage) {
+      setDownloads(prev => {
+        const existingIndex = prev.findIndex(d => d.id === wsMessage.id);
+        if (existingIndex !== -1) {
+          const updated = [...prev];
+          const oldDownload = updated[existingIndex];
+          updated[existingIndex] = { ...oldDownload, ...wsMessage };
 
-        if (message.type === "download_progress") {
-          setDownloads(prev => prev.map(download => 
-            download.id === message.payload.id 
-              ? { ...download, ...message.payload }
-              : download
-          ));
-        } else if (message.type === "download_complete") {
-          setDownloads(prev => prev.map(download => 
-            download.id === message.payload.id 
-              ? { ...download, ...message.payload, progress: 100 }
-              : download
-          ));
-        } else if (message.type === "download_error") {
-          setDownloads(prev => prev.map(download => 
-            download.id === message.payload.id 
-              ? { ...download, status: "failed", error: message.payload.error }
-              : download
-          ));
-        } else if (message.type === "batch_progress") {
-          setDownloads(prev => prev.map(download => 
-            download.id === message.payload.id 
-              ? { ...download, ...message.payload }
-              : download
-          ));
-        } else if (message.type === "batch_complete") {
-          setDownloads(prev => prev.map(download => 
-            download.id === message.payload.id 
-              ? { ...download, ...message.payload, progress: 100, status: "completed" }
-              : download
-          ));
+          // Auto-download when completed
+          if (oldDownload.status !== "completed" && wsMessage.status === "completed") {
+            handleAutoDownload(wsMessage.id, wsMessage.title || "download");
+          }
+
+          return updated;
         }
-      } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
-      }
+        return prev;
+      });
     }
-  }, [lastMessage]);
+  }, [wsMessage]);
+
+  const handleAutoDownload = async (downloadId: string, title: string) => {
+    try {
+      await youtubeApi.downloadFile(downloadId);
+      toast({
+        title: "Download Complete",
+        description: `${title} has been downloaded to your device`,
+      });
+    } catch (error) {
+      console.error("Auto-download failed:", error);
+      toast({
+        title: "Download Available",
+        description: `${title} is ready. Click the download button to save it.`,
+        variant: "default",
+      });
+    }
+  };
+
+  const handleManualDownload = async (downloadId: string, title: string) => {
+    try {
+      await youtubeApi.downloadFile(downloadId);
+      toast({
+        title: "Download Started",
+        description: `Downloading ${title} to your device`,
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: error instanceof Error ? error.message : "Failed to download file",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (downloads.length === 0) {
     return null;
@@ -146,8 +161,8 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
                 </div>
               </div>
 
-              <Progress 
-                value={download.progress} 
+              <Progress
+                value={download.progress}
                 className="w-full mb-2"
                 data-testid={`progress-bar-${download.id}`}
               />

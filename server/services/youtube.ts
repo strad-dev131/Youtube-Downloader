@@ -123,18 +123,24 @@ export class YouTubeService {
     onProgress?: (progress: DownloadProgress) => void
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const filename = `${downloadId}_%(title)s.%(ext)s`;
-      const outputPath = path.join(this.downloadsDir, filename);
-      
       const formatString = this.getFormatString(format);
-      const args = [];
+      let filename: string;
+      let args: string[] = [];
       
       if (format === "mp3" || format === "wav") {
-        args.push("--extract-audio", "--audio-format", format);
-        args.push("--format", "bestaudio/best");
+        filename = `${downloadId}_%(title)s.${format}`;
+        args.push(
+          "--extract-audio", 
+          "--audio-format", format,
+          "--audio-quality", "0", // Best quality
+          "--format", "bestaudio/best"
+        );
       } else {
+        filename = `${downloadId}_%(title)s.%(ext)s`;
         args.push("--format", formatString);
       }
+      
+      const outputPath = path.join(this.downloadsDir, filename);
       
       args.push(
         "--output", outputPath,
@@ -207,15 +213,15 @@ export class YouTubeService {
   private getFormatString(format: string): string {
     switch (format) {
       case "mp4":
-        return "best[height<=720]/best[ext=mp4]/best";
+        return "best[height<=720][ext=mp4]/best[height<=720]/bestvideo[height<=720]+bestaudio/best";
       case "mp4-1080":
-        return "best[height<=1080]/best[ext=mp4]/best";
+        return "best[height<=1080][ext=mp4]/best[height<=1080]/bestvideo[height<=1080]+bestaudio/best";
       case "mp3":
-        return "bestaudio/best --extract-audio --audio-format mp3";
+        return "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best";
       case "wav":
-        return "bestaudio/best --extract-audio --audio-format wav";
+        return "bestaudio[ext=wav]/bestaudio/best";
       case "best":
-        return "best/bestvideo+bestaudio";
+        return "bestvideo+bestaudio/best";
       default:
         return "best";
     }
