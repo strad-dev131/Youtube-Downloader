@@ -82,6 +82,7 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
         description: `Downloading ${title} to your device`,
       });
     } catch (error) {
+      console.error("Manual download failed:", error);
       toast({
         title: "Download Failed",
         description: error instanceof Error ? error.message : "Failed to download file",
@@ -103,14 +104,15 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
     }
   };
 
-  const handleDownloadFile = async (downloadId: string) => {
+  const handleDownloadFile = async (downloadId: string, title?: string) => {
     try {
       await youtubeApi.downloadFile(downloadId);
       toast({
         title: "Download Started",
-        description: "File download has started to your device",
+        description: `Downloading ${title || 'file'} to your device`,
       });
     } catch (error) {
+      console.error("Download failed:", error);
       toast({
         title: "Download Failed",
         description: error instanceof Error ? error.message : "Failed to download file",
@@ -151,7 +153,7 @@ export default function ProgressTracker({ downloads: initialDownloads }: Progres
                   {download.status === "completed" && (
                     <Button
                       size="sm"
-                      onClick={() => handleDownloadFile(download.id)}
+                      onClick={() => handleDownloadFile(download.id, download.title)}
                       className="h-6 px-2 text-xs"
                     >
                       <Download className="h-3 w-3 mr-1" />

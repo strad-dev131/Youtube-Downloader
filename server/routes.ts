@@ -235,6 +235,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filename = require("path").basename(download.filePath);
       const ext = require("path").extname(filename).toLowerCase();
 
+      // Clean filename for download (remove download ID prefix)
+      let cleanFilename = filename;
+      const downloadIdPattern = /^[a-f0-9-]{36}_/;
+      if (downloadIdPattern.test(filename)) {
+        cleanFilename = filename.replace(downloadIdPattern, '');
+      }
+
       // Determine proper content type based on format
       let contentType = 'application/octet-stream';
       if (ext === '.mp4') {
@@ -248,38 +255,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Set appropriate headers for download
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(cleanFilename)}`);
       res.setHeader('Content-Length', stats.size);
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Accept-Ranges', 'bytes');
 
-      // Stream the file to response
-      const fileStream = require("fs").createReadStream(download.filePath);
-      
-      fileStream.on('error', (error) => {
-        console.error('File stream error:', error);
-        if (!res.headersSent) {
-          res.status(500).json({ success: false, error: "File streaming error" });
-        }
-      });
+      // Handle range requests for video files
+      const range = req.headers.range;
+      if (range && (ext === '.mp4' || ext === '.webm')) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+        const chunksize = (end - start) + 1;
 
-      fileStream.on('end', async () => {
-        // Clean up file after download (optional - you can remove this if you want to keep files)
-        try {
-          await youtubeService.deleteFile(download.filePath);
-          console.log(`Cleaned up file: ${download.filePath}`);
-        } catch (error) {
-          console.error(`Failed to clean up file: ${error}`);
-        }
-      });
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${stats.size}`);
+        res.setHeader('Content-Length', chunksize);
 
-      fileStream.pipe(res);
+        const fileStream = require("fs").createReadStream(download.filePath, { start, end });
+        fileStream.pipe(res);
+      } else {
+        // Stream the entire file
+        const fileStream = require("fs").createReadStream(download.filePath);
+        
+        fileStream.on('error', (error) => {
+          console.error('File stream error:', error);
+          if (!res.headersSent) {
+            res.status(500).json({ success: false, error: "File streaming error" });
+          }
+        });
+
+        fileStream.pipe(res);
+      }
 
     } catch (error) {
-      res.status(500).json({ 
-        success: false, 
-        error: "Internal server error" 
-      });
+      console.error('Download endpoint error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          success: false, 
+          error: "Internal server error" 
+        });
+      }
     }
   });
 

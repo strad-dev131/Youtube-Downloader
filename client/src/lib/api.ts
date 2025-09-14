@@ -151,52 +151,82 @@ export class YouTubeApi {
   }
 
   async downloadFile(id: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/download/${id}/file`);
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Download failed" }));
-      throw new Error(error.error || "Failed to download file");
-    }
-
-    // Get filename from Content-Disposition header
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `download_${id}`;
-    
-    if (contentDisposition) {
-      // Handle both encoded and non-encoded filenames
-      const filenameMatch = contentDisposition.match(/filename\*?="?([^"]+)"?/);
-      if (filenameMatch) {
-        filename = decodeURIComponent(filenameMatch[1]);
+    try {
+      const response = await fetch(`${this.baseUrl}/download/${id}/file`, {
+        method: 'GET',
+        headers: {
+          'Accept': '*/*',
+        },
+      });
+      
+      if (!response.ok) {
+        let errorMessage = "Download failed";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
-    }
 
-    // Fallback: try to get content type to determine extension
-    if (!filename.includes('.')) {
-      const contentType = response.headers.get('Content-Type');
-      if (contentType?.includes('mp4')) {
-        filename += '.mp4';
-      } else if (contentType?.includes('mp3')) {
-        filename += '.mp3';
-      } else if (contentType?.includes('wav')) {
-        filename += '.wav';
+      // Get filename from Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `download_${id}`;
+      
+      if (contentDisposition) {
+        // Handle both encoded and non-encoded filenames
+        const filenameMatch = contentDisposition.match(/filename\*?=(?:UTF-8'')?["]?([^"]+)["]?/);
+        if (filenameMatch) {
+          try {
+            filename = decodeURIComponent(filenameMatch[1]);
+          } catch {
+            filename = filenameMatch[1];
+          }
+        }
       }
-    }
 
-    // Create blob and trigger download
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    
-    // Clean up after a short delay to ensure download starts
-    setTimeout(() => {
-      window.URL.revokeObjectURL(url);
+      // Fallback: try to get content type to determine extension
+      if (!filename.includes('.')) {
+        const contentType = response.headers.get('Content-Type');
+        if (contentType?.includes('video/mp4')) {
+          filename += '.mp4';
+        } else if (contentType?.includes('audio/mpeg')) {
+          filename += '.mp3';
+        } else if (contentType?.includes('audio/wav')) {
+          filename += '.wav';
+        } else if (contentType?.includes('video/webm')) {
+          filename += '.webm';
+        }
+      }
+
+      // Create blob and trigger download
+      const blob = await response.blob();
+      
+      if (blob.size === 0) {
+        throw new Error("Downloaded file is empty");
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      
+      // Add to DOM, click, and immediately clean up
+      document.body.appendChild(a);
+      a.click();
       document.body.removeChild(a);
-    }, 100);
+      
+      // Clean up blob URL after a short delay
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Download error:', error);
+      throw error;
+    }
   }
 
   async sendTelegramWebhook(message: any): Promise<{ success: boolean }> {
