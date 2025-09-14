@@ -40,7 +40,11 @@ export class YouTubeService {
   private downloadsDir: string;
 
   constructor() {
-    this.downloadsDir = path.join(process.cwd(), "downloads");
+    // Use /tmp for serverless environments, downloads folder for VPS
+    const outputDir = process.env.VERCEL 
+      ? "/tmp" 
+      : path.join(process.cwd(), "downloads");
+    this.downloadsDir = outputDir;
     this.ensureDownloadsDir();
   }
 
@@ -126,7 +130,7 @@ export class YouTubeService {
       const formatString = this.getFormatString(format);
       let filename: string;
       let args: string[] = [];
-      
+
       if (format === "mp3" || format === "wav") {
         filename = `${downloadId}_%(title)s.${format}`;
         args.push(
@@ -139,9 +143,9 @@ export class YouTubeService {
         filename = `${downloadId}_%(title)s.%(ext)s`;
         args.push("--format", formatString);
       }
-      
+
       const outputPath = path.join(this.downloadsDir, filename);
-      
+
       args.push(
         "--output", outputPath,
         "--no-warnings",
@@ -168,7 +172,7 @@ export class YouTubeService {
             const progressMatch = line.match(/(\d+\.?\d*)%/);
             const speedMatch = line.match(/(\d+\.?\d*\w+\/s)/);
             const etaMatch = line.match(/ETA (\d+:\d+)/);
-            
+
             if (progressMatch && onProgress) {
               const progress = parseFloat(progressMatch[1]);
               onProgress({
@@ -193,7 +197,7 @@ export class YouTubeService {
             // Find the actual downloaded file
             const files = await fs.readdir(this.downloadsDir);
             const downloadedFile = files.find(f => f.startsWith(downloadId));
-            
+
             if (downloadedFile) {
               const fullPath = path.join(this.downloadsDir, downloadedFile);
               resolve(fullPath);
