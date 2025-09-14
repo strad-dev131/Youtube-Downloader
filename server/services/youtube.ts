@@ -57,6 +57,9 @@ export class YouTubeService {
       const args = [
         "--dump-json",
         "--no-warnings",
+        "--no-check-certificates",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "--referer", "https://www.youtube.com/",
         url
       ];
 
@@ -134,6 +137,11 @@ export class YouTubeService {
         "--output", outputPath,
         "--no-warnings",
         "--newline",
+        "--no-check-certificates",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "--referer", "https://www.youtube.com/",
+        "--sleep-interval", "1",
+        "--max-sleep-interval", "5",
         url
       );
 
