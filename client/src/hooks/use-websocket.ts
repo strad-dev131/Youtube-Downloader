@@ -16,7 +16,7 @@ export function useWebSocket() {
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/ws`;
-      
+
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
@@ -34,7 +34,7 @@ export function useWebSocket() {
         console.log("WebSocket disconnected:", event.code, event.reason);
         setIsConnected(false);
         socketRef.current = null;
-        
+
         // Attempt to reconnect with exponential backoff
         if (reconnectAttempts.current < 5) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
@@ -61,12 +61,12 @@ export function useWebSocket() {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
     }
-    
+
     setIsConnected(false);
   };
 

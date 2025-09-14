@@ -1,162 +1,97 @@
-import { type User, type InsertUser, type Download, type InsertDownload, type BatchDownload, type InsertBatchDownload } from "@shared/schema";
 import { randomUUID } from "crypto";
+import type { Download, BatchDownload } from "@shared/schema";
 
-export interface IStorage {
-  // User methods
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByApiKey(apiKey: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUserApiKey(id: string, apiKey: string): Promise<void>;
-  
-  // Download methods
-  getDownload(id: string): Promise<Download | undefined>;
-  getDownloadsByUser(userId: string): Promise<Download[]>;
-  createDownload(download: InsertDownload & { userId?: string }): Promise<Download>;
-  updateDownload(id: string, updates: Partial<Download>): Promise<Download | undefined>;
-  getActiveDownloads(): Promise<Download[]>;
-  
-  // Batch download methods
-  getBatchDownload(id: string): Promise<BatchDownload | undefined>;
-  createBatchDownload(batch: InsertBatchDownload & { userId?: string }): Promise<BatchDownload>;
-  updateBatchDownload(id: string, updates: Partial<BatchDownload>): Promise<BatchDownload | undefined>;
-  getActiveBatchDownloads(): Promise<BatchDownload[]>;
+interface User {
+  id: string;
+  apiKey?: string;
+  plan: string;
+  createdAt: Date;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private downloads: Map<string, Download>;
-  private batchDownloads: Map<string, BatchDownload>;
+// In-memory storage (for development - replace with actual database in production)
+const downloads = new Map<string, Download>();
+const batchDownloads = new Map<string, BatchDownload>();
+const users = new Map<string, User>();
 
-  constructor() {
-    this.users = new Map();
-    this.downloads = new Map();
-    this.batchDownloads = new Map();
-  }
+// Create default user for API key authentication
+const defaultUser: User = {
+  id: "default-user",
+  apiKey: "ytdl_default_api_key",
+  plan: "free",
+  createdAt: new Date()
+};
+users.set(defaultUser.id, defaultUser);
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async getUserByApiKey(apiKey: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.apiKey === apiKey,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { 
-      ...insertUser, 
-      id, 
-      apiKey: null,
-      plan: "free",
+export const storage = {
+  // Download operations
+  async createDownload(data: Omit<Download, 'id' | 'status' | 'progress' | 'createdAt'>): Promise<Download> {
+    const download: Download = {
+      id: randomUUID(),
+      status: "pending" as const,
+      progress: 0,
       createdAt: new Date(),
+      ...data
     };
-    this.users.set(id, user);
-    return user;
-  }
+    downloads.set(download.id, download);
+    return download;
+  },
 
-  async updateUserApiKey(id: string, apiKey: string): Promise<void> {
-    const user = this.users.get(id);
+  async getDownload(id: string): Promise<Download | null> {
+    return downloads.get(id) || null;
+  },
+
+  async updateDownload(id: string, updates: Partial<Download>): Promise<Download | null> {
+    const download = downloads.get(id);
+    if (!download) return null;
+
+    const updated = { ...download, ...updates };
+    downloads.set(id, updated);
+    return updated;
+  },
+
+  // Batch download operations
+  async createBatchDownload(data: Omit<BatchDownload, 'id' | 'status' | 'progress' | 'completedItems' | 'createdAt' | 'totalItems'>): Promise<BatchDownload> {
+    const batch: BatchDownload = {
+      id: randomUUID(),
+      status: "pending" as const,
+      progress: 0,
+      completedItems: 0,
+      totalItems: data.urls.length,
+      createdAt: new Date(),
+      ...data
+    };
+    batchDownloads.set(batch.id, batch);
+    return batch;
+  },
+
+  async getBatchDownload(id: string): Promise<BatchDownload | null> {
+    return batchDownloads.get(id) || null;
+  },
+
+  async updateBatchDownload(id: string, updates: Partial<BatchDownload>): Promise<BatchDownload | null> {
+    const batch = batchDownloads.get(id);
+    if (!batch) return null;
+
+    const updated = { ...batch, ...updates };
+    batchDownloads.set(id, updated);
+    return updated;
+  },
+
+  // User operations
+  async getUserByApiKey(apiKey: string): Promise<User | null> {
+    for (const user of users.values()) {
+      if (user.apiKey === apiKey) {
+        return user;
+      }
+    }
+    return null;
+  },
+
+  async updateUserApiKey(userId: string, apiKey: string): Promise<void> {
+    const user = users.get(userId);
     if (user) {
       user.apiKey = apiKey;
-      this.users.set(id, user);
+      users.set(userId, user);
     }
   }
-
-  async getDownload(id: string): Promise<Download | undefined> {
-    return this.downloads.get(id);
-  }
-
-  async getDownloadsByUser(userId: string): Promise<Download[]> {
-    return Array.from(this.downloads.values()).filter(
-      (download) => download.userId === userId,
-    );
-  }
-
-  async createDownload(downloadData: InsertDownload & { userId?: string }): Promise<Download> {
-    const id = randomUUID();
-    const download: Download = {
-      ...downloadData,
-      id,
-      title: null,
-      status: "pending",
-      progress: 0,
-      fileSize: null,
-      filePath: null,
-      userId: downloadData.userId || null,
-      telegramChatId: downloadData.telegramChatId || null,
-      webhookUrl: downloadData.webhookUrl || null,
-      errorMessage: null,
-      metadata: null,
-      createdAt: new Date(),
-      completedAt: null,
-    };
-    this.downloads.set(id, download);
-    return download;
-  }
-
-  async updateDownload(id: string, updates: Partial<Download>): Promise<Download | undefined> {
-    const download = this.downloads.get(id);
-    if (download) {
-      const updated = { ...download, ...updates };
-      this.downloads.set(id, updated);
-      return updated;
-    }
-    return undefined;
-  }
-
-  async getActiveDownloads(): Promise<Download[]> {
-    return Array.from(this.downloads.values()).filter(
-      (download) => download.status === "downloading" || download.status === "pending",
-    );
-  }
-
-  async getBatchDownload(id: string): Promise<BatchDownload | undefined> {
-    return this.batchDownloads.get(id);
-  }
-
-  async createBatchDownload(batchData: InsertBatchDownload & { userId?: string }): Promise<BatchDownload> {
-    const id = randomUUID();
-    const batch: BatchDownload = {
-      ...batchData,
-      id,
-      status: "pending",
-      progress: 0,
-      totalItems: batchData.urls.length,
-      completedItems: 0,
-      userId: batchData.userId || null,
-      telegramChatId: batchData.telegramChatId || null,
-      webhookUrl: batchData.webhookUrl || null,
-      createdAt: new Date(),
-      completedAt: null,
-    };
-    this.batchDownloads.set(id, batch);
-    return batch;
-  }
-
-  async updateBatchDownload(id: string, updates: Partial<BatchDownload>): Promise<BatchDownload | undefined> {
-    const batch = this.batchDownloads.get(id);
-    if (batch) {
-      const updated = { ...batch, ...updates };
-      this.batchDownloads.set(id, updated);
-      return updated;
-    }
-    return undefined;
-  }
-
-  async getActiveBatchDownloads(): Promise<BatchDownload[]> {
-    return Array.from(this.batchDownloads.values()).filter(
-      (batch) => batch.status === "downloading" || batch.status === "pending",
-    );
-  }
-}
-
-export const storage = new MemStorage();
+};

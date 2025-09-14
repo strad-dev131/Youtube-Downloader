@@ -120,13 +120,22 @@ export class YouTubeService {
       const filename = `${downloadId}_%(title)s.%(ext)s`;
       const outputPath = path.join(this.downloadsDir, filename);
       
-      const args = [
-        "--format", this.getFormatString(format),
+      const formatString = this.getFormatString(format);
+      const args = [];
+      
+      if (format === "mp3" || format === "wav") {
+        args.push("--extract-audio", "--audio-format", format);
+        args.push("--format", "bestaudio/best");
+      } else {
+        args.push("--format", formatString);
+      }
+      
+      args.push(
         "--output", outputPath,
         "--no-warnings",
         "--newline",
         url
-      ];
+      );
 
       const ytdlp = spawn("yt-dlp", args);
       let error = "";
@@ -183,15 +192,15 @@ export class YouTubeService {
   private getFormatString(format: string): string {
     switch (format) {
       case "mp4":
-        return "best[ext=mp4][height<=720]";
+        return "best[height<=720]/best[ext=mp4]/best";
       case "mp4-1080":
-        return "best[ext=mp4][height<=1080]";
+        return "best[height<=1080]/best[ext=mp4]/best";
       case "mp3":
-        return "bestaudio[ext=m4a]/bestaudio/best";
+        return "bestaudio/best --extract-audio --audio-format mp3";
       case "wav":
-        return "bestaudio[ext=wav]/bestaudio/best";
+        return "bestaudio/best --extract-audio --audio-format wav";
       case "best":
-        return "best";
+        return "best/bestvideo+bestaudio";
       default:
         return "best";
     }
